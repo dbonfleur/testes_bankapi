@@ -1,0 +1,30 @@
+@URL=http://localhost:8080/transaction
+
+
+### TRANSFER
+POST {{URL}}/transfer
+Content-Type: application/json
+
+{
+    "sourceAccountNumber": 66666,
+    "receiverAccountNumber": 12346,
+    "amount": 15000000000
+}
+
+### WITHDRAW
+POST {{URL}}/withdraw
+Content-Type: application/json
+
+{
+    "sourceAccountNumber": 11111,
+    "amount": 1000
+}
+
+### DEPOSIT
+POST {{URL}}/deposit
+Content-Type: application/json
+
+{
+    "receiverAccountNumber": 11111,
+    "amount": 2000
+}

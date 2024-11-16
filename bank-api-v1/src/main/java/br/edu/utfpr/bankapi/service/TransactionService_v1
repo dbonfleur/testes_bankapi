@@ -1,0 +1,128 @@
+package br.edu.utfpr.pixapi.service;
+
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import br.edu.utfpr.pixapi.dto.DepositDTO;
+import br.edu.utfpr.pixapi.dto.TransferDTO;
+import br.edu.utfpr.pixapi.dto.WithdrawDTO;
+import br.edu.utfpr.pixapi.exception.NotFoundException;
+import br.edu.utfpr.pixapi.exception.WithoutBalanceException;
+import br.edu.utfpr.pixapi.model.Transaction;
+import br.edu.utfpr.pixapi.model.TransactionType;
+import br.edu.utfpr.pixapi.repository.AccountRepository;
+import br.edu.utfpr.pixapi.repository.TransactionRepository;
+import br.edu.utfpr.pixapi.validations.AvailableAccountValidation;
+import br.edu.utfpr.pixapi.validations.AvailableBalanceValidation;
+import jakarta.transaction.Transactional;
+
+@Service
+public class TransactionService {
+
+    @Autowired
+    private AccountRepository accountRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
+
+    @Autowired
+    private AvailableBalanceValidation availableBalanceValidation;
+
+    @Autowired
+    private AvailableAccountValidation availableAccountValidation;
+
+    @Transactional
+    public Transaction transfer(TransferDTO dto) throws Exception {
+        var transaction = new Transaction();
+        transaction.setType(TransactionType.TRANSFER);
+        BeanUtils.copyProperties(dto, transaction);
+
+        var source = availableAccountValidation.validate(dto.sourceAccountNumber()); // Conta de Origem da transferência
+        var receiver = availableAccountValidation.validate(dto.receiverAccountNumber()); // Conta de Destino da transferência
+
+        transaction.setSourceAccount(source); // Setando a conta de origem da transferência
+        transaction.setReceiverAccount(receiver); // Setando a conta de destino da transferência
+
+        // Verifica se a conta de origem possui saldo
+        availableBalanceValidation.validate(transaction);
+
+        // Debitando o valor da conta de origem
+        transaction.getSourceAccount()
+                .setBalance(transaction.getSourceAccount().getBalance() - transaction.getAmount());
+
+        // Creditando o valor na conta de destino
+        transaction.getReceiverAccount()
+                .setBalance(transaction.getReceiverAccount().getBalance() + transaction.getAmount());
+
+        System.out.println(transaction);
+
+        // Salvando a transação
+        return transactionRepository.save(transaction);
+
+    }
+
+    /**
+     * Operação de depósito em uma conta
+     * 
+     * @throws Exception
+     */
+    @Transactional
+    public Transaction deposit(DepositDTO dto) throws Exception {
+        var transaction = new Transaction();
+        transaction.setType(TransactionType.DEPOSIT);
+        BeanUtils.copyProperties(dto, transaction);
+
+        var receiver = accountRepository.getByNumber(dto.receiverAccountNumber()); // Conta de Destino da transferência
+
+        if (receiver.isEmpty())
+            throw new Exception("Conta de destino inexistente");
+
+        // Setando a conta de destino do depósito
+        transaction.setReceiverAccount(receiver.get());
+
+        System.out.println(transaction);
+
+        // Creditando o valor do depósito na conta de destino
+        transaction.getReceiverAccount()
+                .setBalance(transaction.getReceiverAccount().getBalance() + transaction.getAmount());
+
+        // Salvando a transação
+        return transactionRepository.save(transaction);
+    }
+
+    /**
+     * Operação de saque de uma conta
+     * 
+     * @throws Exception
+     */
+    @Transactional
+    public Transaction withdraw(WithdrawDTO dto) throws Exception {
+        var transaction = new Transaction();
+        transaction.setType(TransactionType.WITHDRAW);
+        BeanUtils.copyProperties(dto, transaction);
+
+        // Conta de Origem da operação de SAQUE
+        var source = accountRepository.getByNumber(dto.sourceAccountNumber());
+
+        if (source.isEmpty())
+            throw new NotFoundException("Conta de origem inexistente");
+
+        // Setando a conta de origem do saque
+        transaction.setSourceAccount(source.get());
+
+        // Verifica se a conta de origem possui saldo
+        if (transaction.getSourceAccount().getBalanceWithLimit() < transaction.getAmount()) {
+            throw new WithoutBalanceException();
+        }
+
+        System.out.println(transaction);
+
+        // Debitando o valor da conta de origem do saque
+        transaction.getSourceAccount()
+                .setBalance(transaction.getSourceAccount().getBalance() - transaction.getAmount());
+
+        // Salvando a transação
+        return transactionRepository.save(transaction);
+    }
+}
